@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 
 	"github.com/shubash/saibaba/moddel"
 	"go.mongodb.org/mongo-driver/bson"
@@ -15,7 +14,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// const connectingstring = "mongodb+srv://shubashduttasaibaba:LE19u3bje3SmmDl0@cluster0.ovbu7ak.mongodb.net/"
+const connectingstring = "mongodb+srv://shubashduttasaibaba:LE19u3bje3SmmDl0@cluster0.ovbu7ak.mongodb.net/"
 
 const dbname = "SaiBABA"
 const colname = "user"
@@ -23,18 +22,13 @@ const colname = "user"
 var Collection *mongo.Collection
 
 func init() {
-
-	// Get the MongoDB URI from the environment variable
-	mongodbURI := os.Getenv("MONGODB_URI")
-	if mongodbURI == "" {
-		log.Fatal("MONGODB_URI environment variable not set")
-	}
+	// Load environment variables from .env file
 
 	// Set up client options
-	ClientOptions := options.Client().ApplyURI(mongodbURI)
+	clientOptions := options.Client().ApplyURI(connectingstring)
 
 	// Create a new MongoDB client
-	client, err := mongo.Connect(context.TODO(), ClientOptions)
+	client, err := mongo.Connect(context.TODO(), clientOptions)
 	if err != nil {
 		log.Fatal("Error connecting to MongoDB:", err)
 	}
@@ -55,35 +49,57 @@ func Home(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "welcome to sai baba turst web site")
 }
 func Singup(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Allow-Control-Allow-Methods", "POST")
-	var user moddel.User
+    w.Header().Set("Content-Type", "application/json")
+    w.Header().Set("Access-Control-Allow-Origin", "*") // Add this line to allow cross-origin requests
+    
+    if r.Method != http.MethodPost {
+        http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+        return
+    }
 
-	_ = json.NewDecoder(r.Body).Decode(&user)
-	count, err := Collection.CountDocuments(context.Background(), bson.M{"email": user.Email})
-	// count, err := Collection.CountDocuments(context.Background(), bson.M{"email": user.Email})
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	if count != 0 {
-		fmt.Println("this email is used allready ")
-		return
-	}
-	num, err := Collection.CountDocuments(context.Background(), bson.M{"phone": user.Phone})
-	if err != nil {
-		log.Println(err)
-	}
-	if num != 0 {
-		fmt.Println("this number is use to make a new id ")
-	}
+    var user moddel.User
+    err := json.NewDecoder(r.Body).Decode(&user)
+    if err != nil {
+        http.Error(w, "Bad request", http.StatusBadRequest)
+        return
+    }
 
-	password := Hashpassword(user.Password)
-	user.Password = password
+    count, err := Collection.CountDocuments(context.Background(), bson.M{"email": user.Email})
+    if err != nil {
+        log.Println(err)
+        http.Error(w, "Internal server error", http.StatusInternalServerError)
+        return
+    }
+    if count != 0 {
+        http.Error(w, "Email is already in use", http.StatusBadRequest)
+        return
+    }
 
-	insertoneuser(user)
-	json.NewEncoder(w).Encode(user)
+    num, err := Collection.CountDocuments(context.Background(), bson.M{"phone": user.Phone})
+    if err != nil {
+        log.Println(err)
+        http.Error(w, "Internal server error", http.StatusInternalServerError)
+        return
+    }
+    if num != 0 {
+        http.Error(w, "Phone number is already in use", http.StatusBadRequest)
+        return
+    }
+
+    password := Hashpassword(user.Password)
+    user.Password = password
+
+    insertoneuser(user)
+
+    // Encode and send the user data as the response
+    err = json.NewEncoder(w).Encode(user)
+    if err != nil {
+        log.Println(err)
+        http.Error(w, "Internal server error", http.StatusInternalServerError)
+        return
+    }
 }
+
 func Login(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json-x-www-from-urlencode")
 	w.Header().Set("Allow-Control-Allow-Methods", "POST")
